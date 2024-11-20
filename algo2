@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>IDYS / ThreePort</title>
+    <style>
+        :root {
+            --bg-primary: #f0f0f0;
+            --bg-secondary: white;
+            --text-primary: #333;
+            --accent-primary: white;
+            --accent-secondary: #f0f0f0;
+            --border-color: #ddd;
+            --button-border: #333;
+        }
+
+        [data-theme='dark'] {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2c2c2c;
+            --text-primary: #e0e0e0;
+            --accent-primary: black;
+            --accent-secondary: #1a1a1a;
+            --border-color: #444;
+            --button-border: white;
+        }
+
+        * {
+            box-sizing: border-box;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        .sidebar {
+            width: 280px;
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .control-button {
+            background: var(--accent-primary);
+            color: var(--text-primary);
+            border: 2px solid var(--button-border);
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .control-button:hover {
+            background: var(--accent-secondary);
+        }
+        
+        #jsonInput {
+            width: 100%;
+            height: 200px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        
+        #renderContainer {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        button {
+            background: var(--accent-primary);
+            color: var(--text-primary);
+            border: 2px solid var(--button-border);
+            border-radius: 4px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: var(--accent-secondary);
+        }
+
+        #debugInfo {
+            background: var(--bg-secondary);
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            border-left: 1px solid var(--border-color);
+            width: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 100vh;
+        }
+
+        .debug-content {
+            flex-grow: 1;
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .grid-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .credit-link {
+            color: var(--text-primary);
+            text-decoration: none;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+
+        .credit-link:hover {
+            text-decoration: underline;
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="header">
+            <h2>ThreePort [algo 2]</h2>
+        </div>
+        <textarea id="jsonInput" placeholder="Paste your JSON points data here...
+
+Example format:
+[
+  {&quot;x&quot;: 0, &quot;y&quot;: 0, &quot;z&quot;: 0},
+  {&quot;x&quot;: 1, &quot;y&quot;: 1, &quot;z&quot;: 1}
+]"></textarea>
+        <button onclick="visualizePoints()">Visualize Points</button>
+        <button class="control-button" onclick="exportOBJ()">Download as OBJ</button>
+        <a href="https://x.com/Idaeyus" target="_blank" class="credit-link">@Idaeyus</a>
+    </div>
+    <div id="renderContainer"></div>
+    <div id="debugInfo">
+        <div class="debug-content">
+            <div>Total Points: 0</div>
+            <div class="button-container">
+                <div class="grid-control">
+                    <button class="control-button" id="gridToggleBtn" onclick="toggleGrid()">Show Grid</button>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="gridCheckbox" onclick="toggleGrid()" checked>
+                    </div>
+                </div>
+                <button class="control-button" onclick="copyPrompt()" id="copyPromptBtn">Copy Prompt</button>
+            </div>
+        </div>
+        <button class="control-button" onclick="toggleTheme()">Toggle Theme</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, controls;
+        let points, lineSegments, grid;
+        let gridVisible = true;
+        let currentPointsData = null;
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? '' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+        }
+
+        function exportOBJ() {
+            if (!currentPointsData || currentPointsData.length === 0) {
+                alert('Please visualize points first before exporting.');
+                return;
+            }
+
+            let objContent = '# 3D Point Cloud OBJ File\n';
+            
+            // Add vertices
+            currentPointsData.forEach(point => {
+                objContent += `v ${point.x} ${point.y} ${point.z}\n`;
+            });
+
+            // Add points as vertices
+            objContent += '\n# Points\n';
+            for (let i = 1; i <= currentPointsData.length; i++) {
+                objContent += `p ${i}\n`;
+            }
+
+            // Add lines if there are connections
+            if (currentPointsData.length > 3) {
+                objContent += '\n# Lines\n';
+                for (let i = 1; i < currentPointsData.length; i++) {
+                    objContent += `l ${i} ${i + 1}\n`;
+                }
+            }
+
+            // Create and trigger download
+            const blob = new Blob([objContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'point_cloud.obj';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function copyPrompt() {
+            const promptText = `Generate a 3D model represented as a list of points in JSON format. Each point is defined by x, y, and z coordinates. The model should have distinct components to represent its shape. Ensure the design is simple, clear, and uses fewer than 50 points. For example:
+Ensure all components are aligned and logical.
+Output only the JSON list of points, nothing else.
+For example, if you are generating a cube, here's the JSON:
+[
+  {"x": -1, "y": -1, "z": -1},
+  {"x": 1, "y": -1, "z": -1},
+  {"x": 1, "y": -1, "z": 1},
+  {"x": -1, "y": -1, "z": 1},
+  {"x": -1, "y": 1, "z": -1},
+  {"x": 1, "y": 1, "z": -1},
+  {"x": 1, "y": 1, "z": 1},
+  {"x": -1, "y": 1, "z": 1}
+]
+This represents a cube centered at the origin with a side length of 2. Use a similar approach to generate models of other objects like cylinders, pyramids, or complex shapes.`;
+
+            navigator.clipboard.writeText(promptText).then(() => {
+                const btn = document.getElementById('copyPromptBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Prompt Copied To Clipboard';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        }
+
+        function toggleGrid() {
+            if (grid) {
+                gridVisible = !gridVisible;
+                grid.visible = gridVisible;
+                const btn = document.getElementById('gridToggleBtn');
+                const checkbox = document.getElementById('gridCheckbox');
+                btn.textContent = gridVisible ? 'Hide Grid' : 'Show Grid';
+                checkbox.checked = gridVisible;
+            }
+        }
+
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xffffff);
+
+            // Create camera
+            const aspect = (window.innerWidth - 480) / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            camera.position.set(5, 5, 5);
+            camera.lookAt(0, 0, 0);
+
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth - 480, window.innerHeight);
+            document.getElementById('renderContainer').appendChild(renderer.domElement);
+
+            // Center the renderer
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.left = '50%';
+            renderer.domElement.style.top = '50%';
+            renderer.domElement.style.transform = 'translate(-50%, -50%)';
+
+            // Add orbit controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Add lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(0, 1, 1);
+            scene.add(directionalLight);
+
+            // Add grid
+            grid = new THREE.GridHelper(10, 10, 0x888888, 0x888888);
+            scene.add(grid);
+            grid.visible = gridVisible;
+
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = (window.innerWidth - 480) / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth - 480, window.innerHeight);
+        }
+
+        function visualizePoints() {
+            try {
+                // Clear previous scene
+                if (points) scene.remove(points);
+                if (lineSegments) scene.remove(lineSegments);
+
+                // Parse JSON input
+                currentPointsData = JSON.parse(document.getElementById('jsonInput').value);
+                
+                // Debug info
+                document.querySelector('#debugInfo .debug-content').innerHTML = `
+                    <div>Total Points: ${currentPointsData.length}</div>
+                    <div class="button-container">
+                        <div class="grid-control">
+                            <button class="control-button" id="gridToggleBtn" onclick="toggleGrid()">${gridVisible ? 'Hide Grid' : 'Show Grid'}</button>
+                            <div class="checkbox-wrapper">
+                                <input type="checkbox" id="gridCheckbox" onclick="toggleGrid()" ${gridVisible ? 'checked' : ''}>
+                            </div>
+                        </div>
+                        <button class="control-button" onclick="copyPrompt()" id="copyPromptBtn">Copy Prompt</button>
+                    </div>
+                `;
+
+                // Create geometry for points
+                const pointsGeometry = new THREE.BufferGeometry();
+                const positions = [];
+                
+                currentPointsData.forEach(point => {
+                    positions.push(point.x, point.y, point.z);
+                });
+
+                pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+                // Create point material
+                const pointsMaterial = new THREE.PointsMaterial({
+                    color: 0xff0000,
+                    size: 0.2,
+                    sizeAttenuation: true
+                });
+
+                // Create points object
+                points = new THREE.Points(pointsGeometry, pointsMaterial);
+                scene.add(points);
+
+                // If enough points, create line connections
+                if (currentPointsData.length > 3) {
+                    // Create line segments to show connections
+                    const linesGeometry = new THREE.BufferGeometry();
+                    const linePositions = [];
+
+                    // Connect points in sequence
+                    for (let i = 0; i < currentPointsData.length - 1; i++) {
+                        const point1 = currentPointsData[i];
+                        const point2 = currentPointsData[i + 1];
+                        linePositions.push(point1.x, point1.y, point1.z);
+                        linePositions.push(point2.x, point2.y, point2.z);
+                    }
+
+                    linesGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+
+                    const linesMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 });
+                    lineSegments = new THREE.LineSegments(linesGeometry, linesMaterial);
+                    scene.add(lineSegments);
+                }
+
+            } catch (error) {
+                alert('Error parsing JSON data. Please check the format.');
+                console.error(error);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Load OrbitControls and initialize
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js';
+        script.onload = init;
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
